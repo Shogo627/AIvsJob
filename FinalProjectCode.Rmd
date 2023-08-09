@@ -1,0 +1,1590 @@
+---
+title: "Predicting the Unemployment Rate: Exploring the Impact of Technological Advancement"
+subtitle: "PSTAT 131 Final Project"
+author: "Shogo Moridaira"
+date: "06/13/2023"
+output: 
+  html_document:
+    toc: true
+    toc_float:
+      collapsed: false
+      smooth_scroll: true
+    theme: united
+    code_folding: hide
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+### Introduction
+
+#### Intro
+The aim of this project is to delve into the relationship between unemployment rate and technological advancements, particularly the rise of artificial intelligence (AI), and create a model to predict these dynamics.
+![alt text here](/Users/moridairashogo/Desktop/PSTAT 131/FINAL_PROJECT/AItakingjobs.png)
+
+#### What are AI and Technological Advancements?
+Artificial Intelligence (AI) represents the zenith of technological advancements in the current era. As its name suggests, AI manifests through machines demonstrating intelligence characteristics typically attributed to humans, such as problem-solving, pattern recognition, decision-making, and understanding natural language. Corporations like Google and Microsoft have been on the forefront of AI research, resulting in innovations like ChatGPT/Bing and Bard, respectively. Similarly, other companies like Amazon and Tesla have made significant strides in the AI sector, particularly in cloud platforms and autonomous vehicles
+[CLick here to watch Marques Brownlee talk about Bing VS Bard](https://www.youtube.com/watch?v=HKvo6acp5aI)
+![alt text here](/Users/moridairashogo/Desktop/PSTAT 131/FINAL_PROJECT/BardVSBing.png)
+[Click here to see how Tesla's Autopilot Sees On The Road](https://www.youtube.com/watch?v=fKXztwtXaGo)
+![alt text here](/Users/moridairashogo/Desktop/PSTAT 131/FINAL_PROJECT/Tesla.png)
+[Click here to learn about AWS](https://www.youtube.com/watch?v=EhExK4JgXvE)
+![alt text here](/Users/moridairashogo/Desktop/PSTAT 131/FINAL_PROJECT/aws.png)
+
+
+#### What are We Trying to Do?
+Despite the impressive progress, the increasing pervasiveness of AI has sparked a debate on its potential impact on the job market. Many fear that automation enabled by AI may result in job losses and a surge in unemployment rates. On the other hand, some believe that AI is more likely to transform jobs rather than eliminate them, allowing human focus to shift towards more complex tasks and facilitating societal growth.
+
+#### Why?
+Understanding the interplay between unemployment rates and technological advancements, particularly AI, is critical in this era of rapid technological growth. This understanding can guide the formulation of strategies and policies to prepare for and potentially mitigate any adverse impacts of AI on employment. The potential role of tech giants like Apple, which are yet to make significant strides in the AI field, cannot be overlooked, as their entry could catalyze significant shifts, given their influence and market capitalization.
+
+#### How?
+In this project, we aim to explore the intricate dynamics between technological advancements, including the rise of AI, and unemployment rates from 2000 to 2018. While the influence of AI is a part of our analysis, our broader focus lies in understanding the overall impact of technological evolution on the labor market. To achieve this, we will first implement time series analysis to study historical patterns and trends, followed by leveraging machine learning models to predict future trends based on these historical data. The outcome of our project will not only guide individuals and organizations navigating the evolving job market, but also inform policymakers seeking to balance the benefits of technological advancement with its potential drawbacks, like technology-induced unemployment.
+
+#### Conclusion
+Often compared to the advent of the internet, AI is anticipated to revolutionize the world in unprecedented ways. Just like the early adopters of the internet reaped enormous benefits, preparing for the AI boom is crucial for future prosperity. By examining the interplay between unemployment rates and technological advancements, we aim to contribute valuable insights to this preparation. Our exploration is intended to dispel fears around AI and its impact on jobs and highlight its potential to drive societal growth and productivity. As we navigate this era of rapid technological change, our project will provide critical insights to better prepare and adapt for the future.
+
+### Examining Time Series Analysis
+
+In this section, we will carry out a time series analysis to scrutinize the evolution of our key variables over time.
+Downloading data and Packages
+```{r}
+#install.packages("naniar")
+library(dplyr)
+library(tidyverse)
+library(naniar)
+library(recipes)
+library(rsample)
+library(corrplot)
+library(ggplot2)
+
+#Research and Development expenditure 1996~2021
+RD_exp <- read.csv("/Users/moridairashogo/Desktop/PSTAT 131/FINAL_PROJECT/DATA/RD_exp.csv", 
+                   header = TRUE, fill = TRUE, skip = 4)
+
+#Unemployment 1991~2021
+unemp <- read.csv("/Users/moridairashogo/Desktop/PSTAT 131/FINAL_PROJECT/DATA/unemp.csv",
+                  header = TRUE, fill = TRUE, skip = 4)
+
+#Creation of New Technology 2000~2018
+#derived from [Scientific and Technical Journal Articles] 
+#and [Patent Applications, Residents + Non-Residents]
+Creation_New_tech <- read.csv("/Users/moridairashogo/Desktop/PSTAT 131/FINAL_PROJECT/DATA/TAI2000-2018_TechCreation.csv")
+
+#Diffusion of New Technology 2000~2018
+#derived from [Individuals using the Internet (% of Population)] 
+#and [High-technology exports (% of manufactured exports)]
+
+Diffusion_New_Tech <-  read.csv("/Users/moridairashogo/Desktop/PSTAT 131/FINAL_PROJECT/DATA/TAI2000-2018_DiffusionNewTech.csv")
+```
+
+Here we will be making adjustment to data, in order to take further action
+Adjusting Years, Deleting unnecessary columns, and adjusting Countries
+
+```{r}
+#Adjusting years
+column_names <- c("Country.Name", "Country.Code", "Indicator.Name", "Indicator.Code")
+years <- paste("X", 2000:2018, sep="")
+column_names <- c(column_names, years) 
+RD_exp <- RD_exp[, column_names]
+unemp <- unemp[, column_names]
+#Now all the data have year from 2000~2018
+
+#Delete unnecessary Columns
+RD_exp <- select(RD_exp, -Country.Name,-Indicator.Name,-Indicator.Code)
+unemp <- select(unemp,-Country.Name,-Indicator.Name,-Indicator.Code)
+Creation_New_tech <- select(Creation_New_tech, -Country_Name)
+Diffusion_New_Tech <- select(Diffusion_New_Tech, -Country_Name)
+
+#Now adjust number of countries
+num_countries_RD_exp <- length(RD_exp$Country.Code);num_countries_RD_exp
+num_countries_unemp <- length(unemp$Country.Code);num_countries_unemp
+num_countries_Creation_New_tech <- length(Creation_New_tech $Country_Code)
+num_countries_Diffusion_New_Tech <- length(Diffusion_New_Tech$Country_Code)
+#Here we have 266 for R&D and Unemp, but 179 for rest of two.
+
+unique_countries <- Creation_New_tech$Country_Code #it's the same for Creation and Diffusion
+
+# Filter RD_exp and unemp data 
+RD_exp <- RD_exp[RD_exp$Country.Code %in% unique_countries, ]
+unemp <- unemp[unemp$Country.Code %in% unique_countries, ]
+num_countries_RD_exp_filtered <- length(RD_exp$Country.Code)
+num_countries_unemp_filtered <- length(unemp$Country.Code)
+# Now all of the data sets have the same Country Code
+```
+Here we will be working on missing data
+```{r}
+#Now working on missing data
+missing_values <- colSums(is.na(RD_exp))
+print(missing_values)
+```
+And rest of the data are not missing any data
+```{r}
+missing_values_unemp <- colSums(is.na(unemp))
+print(missing_values_unemp)
+missing_values_Creation_New_tech <- colSums(is.na(Creation_New_tech))
+print(missing_values_Creation_New_tech)
+missing_values_Diffusion_New_Tech <- colSums(is.na(Diffusion_New_Tech))
+print(missing_values_Diffusion_New_Tech)
+```
+Let's see if we have any missing data.
+```{r}
+#Getting rid of missing values
+#Doing this is fine because most of the missing values come from non-big countries.
+vis_miss(RD_exp)
+```
+Oh no! There are bunch, let's get rid of them.
+1. If a country is missing more than 3 data, we get rid of that country
+2. Filtering IN the countries less than 3, so that we can get rid of countries with more than 3 missing
+```{r}
+RD_exp_long <- RD_exp %>%
+  pivot_longer(cols = starts_with("X"),
+               names_to = "Year",
+               values_to = "RD_exp")
+
+RD_exp_long$Year <- as.numeric(str_remove(RD_exp_long$Year, "X"))
+RD_exp_long <- RD_exp_long %>%
+  group_by(Country.Code) %>%
+  filter(sum(is.na(RD_exp)) <= 3) %>%
+  ungroup()
+
+vis_miss(RD_exp_long)
+```
+Looks a lot better!!
+
+Now let's aim perfection. 
+1. we will adjust countries bases on R&D missing values
+2. Use K-NN model to fill out missing data
+```{r}
+num_countries_RD_exp_long <- length(unique(RD_exp_long$Country.Code));num_countries_RD_exp_long
+
+#Now again, we adjust to countries based on R&D missing values
+unique(RD_exp_long$Country.Code)
+unemp <- unemp[unemp$Country.Code %in% unique(RD_exp_long$Country.Code), ]
+Creation_New_tech <- Creation_New_tech[Creation_New_tech$Country_Code %in% unique(RD_exp_long$Country.Code), ]
+Diffusion_New_Tech <- Diffusion_New_Tech[Diffusion_New_Tech$Country_Code %in% unique(RD_exp_long$Country.Code), ]
+#now lets fill out the missing values of R&D
+RD_exp_long$Country.Code <- as.factor(RD_exp_long$Country.Code)
+RD_recipe <- recipe(RD_exp ~ ., data = RD_exp_long) %>%
+  step_impute_knn(RD_exp, neighbors = 5)
+RD_prep <- prep(RD_recipe)
+RD_complete <- bake(RD_prep, RD_exp_long)
+vis_miss(RD_complete)
+```
+WOW no missing data!!
+
+Now let's convert into long format, and combine all of these data into one data set
+```{r}
+#Now making everything into long format
+unemp_long <- unemp %>%
+  pivot_longer(cols = starts_with("X"),
+               names_to = "Year",
+               values_to = "Unemployment")
+Creation_New_tech_long <- Creation_New_tech %>%
+  pivot_longer(cols = starts_with("X"),
+               names_to = "Year",
+               values_to = "Creation_of_New_Technology")
+Diffusion_New_Tech_long <- Diffusion_New_Tech %>%
+  pivot_longer(cols = starts_with("X"),
+               names_to = "Year",
+               values_to = "Diffusion_of_New_Technology")
+
+#Now we can combine all of these data
+unemp_long <- unemp_long %>%
+  mutate(Year = as.numeric(str_remove(Year, "X")))
+
+Creation_New_tech_long <- Creation_New_tech_long %>%
+  mutate(Year = as.numeric(str_remove(Year, "X"))) %>%
+  rename(Country.Code = Country_Code)
+
+Diffusion_New_Tech_long <- Diffusion_New_Tech_long %>%
+  mutate(Year = as.numeric(str_remove(Year, "X"))) %>%
+  rename(Country.Code = Country_Code)
+
+# Combining the data
+combined_data <- full_join(RD_complete, unemp_long, by = c("Country.Code", "Year")) %>%
+  full_join(Creation_New_tech_long, by = c("Country.Code", "Year")) %>%
+  full_join(Diffusion_New_Tech_long, by = c("Country.Code", "Year"));combined_data
+#perfect!!
+```
+Now we have one data set that contains all the predictors. 
+Next, we are splitting data into 3 sets. One being Developed, Emerging, and Less Developed.
+In this way we will be able to train model based on different types of countries. 
+
+```{r}
+#We are doing this way so that we can make a prediction world-wide rather then focusing on one country
+combined_data <- combined_data %>%
+  mutate(Group = case_when(
+    Country.Code %in% c("USA", "JPN", "GBR", "FRA", "CAN", "DEU", "BEL", "NLD", "SWE", "DNK", "AUT", "FIN", "IRL", "ISL", "LUX", "NOR", "SGP") ~ "Developed",
+    Country.Code %in% c("CHN", "BRA", "IND", "RUS", "MEX", "TUR", "ZAF", "KOR", "THA", "ISR", "POL", "CZE", "HUN", "SVK", "EST", "SVN", "CYP", "MLT", "HRV", "LTU", "LVA", "ROU", "BGR", "AZE", "KAZ", "KGZ", "TJK", "UZB", "ARM", "GEO", "MNG") ~ "Emerging",
+    TRUE ~ "Less Developed"
+  ))
+
+table(combined_data$Group)
+"Creation_New_Tech" %in% colnames(RD_complete)
+"Creation_New_Tech" %in% colnames(unemp_long)
+"Creation_New_Tech" %in% colnames(Creation_New_tech_long)
+"Creation_New_Tech" %in% colnames(Diffusion_New_Tech_long)
+
+combined_data_grouped_yearly <- combined_data %>%
+  group_by(Year, Group) %>%
+  summarise(
+    RD_exp = mean(RD_exp, na.rm = TRUE),
+    Unemployment = mean(Unemployment, na.rm = TRUE),
+    Creation_of_New_Technology = mean(`Creation_of_New_Technology`, na.rm = TRUE),
+    Diffusion_of_New_Technology = mean(`Diffusion_of_New_Technology`, na.rm = TRUE)
+  ) %>%
+  ungroup()
+
+
+initial_year <- 2000
+final_year <- 2018
+split_year <- 2015
+```
+
+First, we separate our data into training and testing datasets for the group of developed countries. We're interested in the period from initial_year to final_year, and we will use the data up to split_year for training, and the remaining data for testing our model.
+```{r}
+train_data_developed_ts <- combined_data_grouped_yearly %>%
+  filter(Group == "Developed" & Year >= initial_year & Year <= split_year)
+
+test_data_developed <- combined_data_grouped_yearly %>%
+  filter(Group == "Developed" & Year > split_year & Year <= final_year)
+```
+
+We then compute the correlation matrix for the numeric variables in our training data. This gives us an idea of how these variables are related to each other. We visualize the correlation matrix using corrplot.
+
+```{r}
+numeric_vars <- train_data_developed_ts %>% select(where(is.numeric))
+corr_mat <- cor(numeric_vars, use = "complete.obs")
+corrplot(corr_mat, method = "color", type = "lower")
+plot.ts(train_data_developed_ts)
+```
+
+Next, we plot the Unemployment rate over time. This visualization will help us understand the trend and fluctuations in the Unemployment rate over the years.
+```{r}
+# Plot Unemployment over time
+ggplot(data = combined_data_grouped_yearly, aes(x = Year, y = Unemployment)) +
+  geom_line() +
+  facet_wrap(~Group) +
+  theme_minimal() +
+  ggtitle("Unemployment over Time")
+```
+
+We also plot the measures of technological advancement over time. These plots help us visualize how the creation and diffusion of new technology have evolved over the years in different groups of countries.
+```{r}
+# Plot Technology advancement measures over time
+ggplot(data = combined_data_grouped_yearly, aes(x = Year, y = Creation_of_New_Technology)) +
+  geom_line() +
+  facet_wrap(~Group) +
+  theme_minimal() +
+  ggtitle("Creation of New Technology over Time")
+
+ggplot(data = combined_data_grouped_yearly, aes(x = Year, y = Diffusion_of_New_Technology)) +
+  geom_line() +
+  facet_wrap(~Group) +
+  theme_minimal() +
+  ggtitle("Diffusion of New Technology over Time")
+```
+
+We calculate the correlation matrix for the variables of interest in our study. This will provide insight into how these variables are interrelated.
+```{r}
+# Compute correlations for all variables of interest
+cor_matrix <- cor(combined_data_grouped_yearly[, c("Unemployment", "RD_exp", "Creation_of_New_Technology", "Diffusion_of_New_Technology")], use = "complete.obs")
+print(cor_matrix)
+```
+
+We also calculate the correlation matrix specifically for the developed group. This will help us understand if there are any unique patterns in this group.
+```{r}
+# Compute correlations for developed group
+cor_matrix <- cor(train_data_developed_ts[, c("Unemployment", "RD_exp", "Creation_of_New_Technology", "Diffusion_of_New_Technology")], use = "complete.obs")
+print(cor_matrix)
+```
+
+Fit linear regression model
+```{r}
+model <- lm(Unemployment ~ RD_exp*Year + `Creation_of_New_Technology`*Year + `Diffusion_of_New_Technology`*Year, data = train_data_developed_ts)
+summary(model)
+```
+In conclusion, our exploration of the data and preliminary analysis suggest complex relationships between technology advancements and unemployment rates, particularly in developed countries. The R&D expenditure is moderately positively correlated with both unemployment and diffusion of new technology, indicating that as R&D investments increase, the diffusion of new technology escalates, creating a complex influence on unemployment.
+
+Interestingly, we found a moderately negative correlation between the creation of new technology and unemployment. This infers that the increase in the creation of new technologies might be generating more job opportunities, thereby potentially reducing the unemployment rate.
+
+However, an intriguing observation is that the diffusion of new technology tends to decrease as the creation of new technology increases. This counterintuitive observation may be attributed to factors such as a lag between the creation of a new technology and its widespread adoption, or due to other variables not considered in our dataset.
+
+Our linear regression model failed to establish a significant relationship between time and our predictors, specifically R&D expenditure, Creation of New Technology, and Diffusion of New Technology. From this, we concluded that time series analysis may not be the best method for predicting unemployment in this case. An Augmented Dickey-Fuller test also supported this decision, showing stationarity in the time series data.
+
+Despite these insights, it's critical to note the limitations of our approach. The correlations identified do not denote causality, and a more thorough examination is needed to derive any causative relationships. Moreover, the country-group level analysis could mask specific trends at the country level or individual level.
+
+Our next steps will involve exploring machine learning models to predict unemployment rates using the identified technological advancement variables. We aim to construct a model capable of capturing these intricate relationships and predicting future trends based on historical data.
+
+
+
+### Machine Learning Models
+Downloading Packages
+```{r}
+#install.packages("stringr")
+#install.packages("naniar")
+#install.packages("prettydoc")
+#install.packages("xgboost")
+#install.packages("kableExtra")
+#install.packages("workflows")
+#install.packages("tune")
+#install.packages("poissonreg")
+#install.packages("corrr")
+#install.packages("randomForest")
+#install.packages("rpart.plot")
+#install.packages("tidytext")
+library(stringr)
+library(prettydoc)
+library(ggthemes)
+library(readr)
+library(tidymodels) # Includes recipes, rsample, tune, workflows, parsnip
+library(knitr)
+library(kableExtra)
+library(xgboost)
+library(corrplot)
+library(janitor)
+library(ISLR)
+library(discrim)
+library(poissonreg)
+library(glmnet)
+library(corrr)
+library(randomForest)
+library(rpart.plot)
+library(vip)
+library(ranger)
+library(tidytext)
+library(kknn)
+library(ggplot2)
+```
+
+#### Data Cleaning
+Since all the data cleaning part has been done in time series analysis part, we only have to split them by country category. 
+The classification of these countries into the respective categories is based on several factors, including but not limited to GDP per capita, economic growth rates, industrialization level, human development index, and other socio-economic and demographic factors. This approach allows us to better understand the interplay between technology and employment across different stages of economic development.
+```{r}
+set.seed(16524)
+
+# Separate the data into three groups
+data_developed <- combined_data[combined_data$Group == "Developed", ]
+data_emerging <- combined_data[combined_data$Group == "Emerging", ]
+data_less_developed <- combined_data[combined_data$Group == "Less Developed", ]
+```
+
+1. Developed countries represent nations with a high degree of industrialization, infrastructure, and standard of living. These include nations like Austria (AUT), Belgium (BEL), Canada (CAN), Germany (DEU), Denmark (DNK), Finland (FIN), France (FRA), the United Kingdom (GBR), Ireland (IRL), Iceland (ISL), Japan (JPN), Luxembourg (LUX), Netherlands (NLD), Norway (NOR), Singapore (SGP), Sweden (SWE), and the United States (USA). These countries tend to have stable economies, robust institutional frameworks, and high per capita income.
+```{r}
+print(paste("Developed countries data set includes", paste(unique(data_developed$Country.Code), collapse = ", ")))
+```
+
+2. Emerging countries are those that are in the process of rapid growth and industrialization. These include Armenia (ARM), Azerbaijan (AZE), Bulgaria (BGR), Brazil (BRA), China (CHN), Cyprus (CYP), Czech Republic (CZE), Estonia (EST), Croatia (HRV), Hungary (HUN), India (IND), Israel (ISR), Kazakhstan (KAZ), Kyrgyzstan (KGZ), Korea (KOR), Lithuania (LTU), Latvia (LVA), Mexico (MEX), Malta (MLT), Mongolia (MNG), Poland (POL), Romania (ROU), Russia (RUS), Slovakia (SVK), Slovenia (SVN), Thailand (THA), Tajikistan (TJK), Turkey (TUR), Uzbekistan (UZB), and South Africa (ZAF). These economies are characterized by increased economic liberalization, development of the domestic financial market, increased participation within the global market, and a higher living standard than before.
+```{r}
+print(paste("Emerging countries data set includes", paste(unique(data_emerging$Country.Code), collapse = ", ")))
+```
+
+3. Less Developed category consists of countries still developing socioeconomically. These include Argentina (ARG), Belarus (BLR), Colombia (COL), Costa Rica (CRI), Cuba (CUB), Egypt (EGY), Spain (ESP), Greece (GRC), Italy (ITA), Kuwait (KWT), Moldova (MDA), North Macedonia (MKD), Panama (PAN), Portugal (PRT), Serbia (SRB), Trinidad and Tobago (TTO), Tunisia (TUN), and Ukraine (UKR). These nations might be experiencing unstable political environments, economic vulnerabilities, and lower living standards, but they also hold substantial growth potential.
+```{r}
+print(paste("Less developed countries data set includes", paste(unique(data_less_developed$Country.Code), collapse = ", ")))
+```
+
+
+### Developed Countries 
+#### Visual EDA (Exploratory data analysis)
+Now, we will explore the relationships between  variables with the outcome as well as with each other!
+First, let’s explore the distribution of our outcome, Unemployment Rate
+```{r}
+ggplot(data_developed, aes(Unemployment)) +
+  geom_bar(fill='cyan4') +
+  labs(
+    title = "Distribution of Unemployment Rate"
+  )
+```
+Correlation analysis
+```{r}
+developed_numeric <- data_developed %>%
+  select_if(is.numeric)
+
+# Correlation matrix
+developed_cor <- cor(developed_numeric);developed_cor
+
+# Visualization of correlation matrix
+developed_corrplot <- corrplot(developed_cor, method = "circle", addCoef.col = 1, number.cex = 0.7)
+```
+
+From this correlation analysis, a few key observations stand out. Firstly, the Year variable has a moderate positive correlation with Diffusion of New Technology, indicating that technology diffusion has increased over the years. However, the correlations of Year with other variables are relatively weak, suggesting the temporal aspect might not have a significant linear effect on these factors. Interestingly, RD_exp (R&D expenditure) exhibits a somewhat positive yet weak correlation with the Creation of New Technology. This suggests that although higher R&D spending is associated with an increase in the creation of new technology, the relationship isn't particularly strong and might not be the only major driver. Unemployment has a slightly negative correlation with the Diffusion of New Technology, which could mean that as unemployment rises, the diffusion of new technology might decrease somewhat. This could be due to economic constraints hindering the adoption of new technologies during periods of higher unemployment. Lastly, the Creation of New Technology and the Diffusion of New Technology have a near-zero correlation, implying these two processes could largely operate independently of each other. Given the low to moderate correlation values, it's clear that the relationships between these variables are not strongly linear. This suggests that a non-linear modeling approach or a model that includes interaction terms could potentially provide a more accurate representation of these relationships.
+
+#### Data Partitioning
+The initial step before we can start training any models involves dividing our dataset into a training set and a test set. We will use the training set for its namesake purpose: to train our models. Conversely, the test set serves as an examination ground where our models cannot use the data for training. When we eventually apply our chosen "best" model (typically determined by the lowest RMSE or root mean squared error in regression cases) to the test set, we can gauge its real-world performance on unseen data. By dividing our data into training and test sets, we mitigate the risk of overfitting because the model doesn't utilize all available data for learning. I've chosen to divide the data into a 70/30 split. This means that 70% of the data will be used for the training set and the remaining 30% will be dedicated to the test set. In this way, we're using a majority of our data for training the model while still reserving a sufficient portion for testing it. Importantly, the split is stratified based on the outcome variable, the unemployment rate, to ensure an even distribution of this variable in both the training and test sets.
+
+```{r}
+# Initial split for each group: 70% for training, 30% for testing
+# Developed
+set.seed(54366)
+data_split_developed <- initial_split(data_developed, prop = 0.7)
+train_data_developed <- training(data_split_developed)
+test_data_developed <- testing(data_split_developed)
+nrow(train_data_developed)/nrow(data_developed)
+train_data_developed <- train_data_developed[, !(names(train_data_developed) %in% "Group")]
+```
+
+#### Visual EDA fpr developed countries
+```{r}
+ggplot(train_data_developed, aes(Country.Code)) +
+  geom_bar(fill='brown3') +
+  labs(
+    title = "Distribution of Country.Code"
+  )
+ggplot(train_data_developed, aes(Unemployment)) +
+  geom_bar(fill='cyan4') +
+  labs(
+    title = "Distribution of Unemployment Rate"
+  )
+```
+
+#### Recipe Creation
+First, we call the str() function to get a detailed internal structure of the train_data_developed dataframe. This provides a quick overview of the data, including the data type and value of each column. Then, we create a recipe for preprocessing our data using the recipe() function from the recipes package in R. The formula Unemployment ~ . tells the recipe that the Unemployment column is our outcome (what we want to predict), and the . represents all other columns in the dataframe as predictors. Following this, we use the step_zv() function to remove any predictors that have zero variance because they don't contribute to the predictive power of the model. The step_rm() function is then used to remove the Country.Code column from our predictors as it's not required in our model.Next, we use step_center() and step_scale() to standardize all numeric predictor variables. Centering redefines the variables so their means are zero, and scaling adjusts the variables so their standard deviations are one. This standardization is necessary because different variables are often measured on different scales, and these differences can affect the model's training process.
+Lastly, we prep and bake the recipe on our training data. This executes the preprocessing steps we've outlined on our actual dataset. After that, we display the first few rows of the processed data using the kable() function from the knitr package, which helps to create beautiful and flexible tables. The scroll_box() function is then used to add a scroll box to our table for easier viewing, particularly when the table is large.
+```{r}
+str(train_data_developed)
+
+recipe <- recipe(Unemployment ~ ., data = train_data_developed) %>%
+  step_zv(all_predictors()) %>%
+  step_rm(Country.Code) %>% 
+  step_center(all_numeric_predictors(), -all_outcomes()) %>%
+  step_scale(all_numeric_predictors(), -all_outcomes())
+
+prep(recipe) %>% 
+  bake(new_data = train_data_developed) %>% 
+  head() %>% 
+  kable() %>% 
+  kable_styling(full_width = F) %>% 
+  scroll_box(width = "100%", height = "200px")
+```
+
+#### K-Fold Modeling
+In this section, I am implementing K-Fold Cross Validation, a resampling procedure frequently utilized to evaluate machine learning models on limited data samples. This procedure necessitates a single parameter, k, which refers to the number of groups into which the data sample is to be divided. I've chosen k=5 for my analysis. I'm performing this operation on three distinct datasets: developed, emerging, and less developed. By doing so, I aim to ensure robust model performance by testing it on different segments of the data, thereby enabling a comprehensive assessment of the model's accuracy and reliability.
+```{r}
+folds_developed <- vfold_cv(train_data_developed, v = 5)
+```
+#### Model Building
+Now, it's time to roll up my sleeves and construct the models! For assessing the performance of my models, I've chosen Root Mean Squared Error (RMSE) as the go-to metric. RMSE is a frequently used metric for evaluating regression models. It quantifies the average magnitude of the error between the predicted and actual values, thus giving us a solid indication of the model's predictive accuracy. Naturally, the lower the RMSE, the better the model’s predictive power. As RMSE is a measure of distance, it's critical that our data is normalized, which I've done in the data preparation step with the recipe.
+
+1.In my modeling endeavor, I am fitting six distinct models to the data. However, to maintain focus and deliver effective results, I'll hone in on the two best-performing models for further analysis. Let's commence the exciting journey of model building!
+
+#### Fitting the models
+Now, I'm setting up multiple types of models that I will fit to the data. Here are the models I'm preparing:
+
+1. Linear Regression: A simple linear model for regression. It assumes a linear relationship between the predictor and the outcome variable.
+
+2. Polynomial Regression: This model incorporates polynomial terms to capture non-linear relationships in the data. Here, I'm planning to tune the degree of the polynomial.
+
+3. K Nearest Neighbors (KNN): KNN uses the 'K' closest observations to predict an observation's value. I'll tune the number of neighbors parameter in this model.
+
+5. Random Forest: An ensemble learning method that operates by constructing multiple decision trees. It provides an improvement over single decision trees by reducing overfitting. I'll be tuning the number of predictors, the number of trees, and the minimum number of values in each node.
+
+6. Boosted Trees: Boosted trees sequentially build decision trees where each tree corrects the errors of the previous one. I will tune the number of trees, the learning rate, and the minimum number of observations in the node.
+```{r}
+# LINEAR REGRESSION 
+lm_model <- linear_reg() %>% 
+  set_engine("lm")
+
+# POLYNOMIAL REGRESSION
+# Adjusting the recipe because the tuning parameter must be added in the recipe for polynomial regression
+# Tuning the degree
+poly_rec <- recipe %>% 
+  step_poly(RD_exp, Creation_of_New_Technology, Diffusion_of_New_Technology, degree = tune())
+
+poly_spec <- linear_reg() %>% 
+  set_mode("regression") %>% 
+  set_engine("lm")
+
+# K NEAREST NEIGHBORS
+# Tuning the number of neighbors
+knn_model <- nearest_neighbor(neighbors = tune()) %>% 
+  set_mode("regression") %>% 
+  set_engine("kknn")
+
+# RANDOM FOREST
+# Tuning mtry (number of predictors), trees, and min_n (number of minimum values in each node)
+rf_spec <- rand_forest(mtry = tune(), 
+                       trees = tune(), 
+                       min_n = tune()) %>% 
+  set_engine("ranger", importance = "impurity") %>% 
+  set_mode("regression")
+
+# BOOSTED TREES
+# Tuning trees, learn_rate (the learning rate), and min_n
+boosted_spec <- boost_tree(trees = tune(),
+                           learn_rate = tune(),
+                           min_n = tune()) %>%
+  set_engine("xgboost") %>%
+  set_mode("regression")
+```
+
+2.Set up the workflows and add the model and the recipe
+```{r}
+# LINEAR REGRESSION 
+lm_workflow <- workflow() %>% 
+  add_model(lm_model) %>% 
+  add_recipe(recipe)
+
+# POLYNOMIAL REGRESSION
+poly_wf <- workflow() %>% 
+  add_model(poly_spec) %>% 
+  add_recipe(poly_rec)
+
+# K NEAREST NEIGHBORS
+knn_workflow <- workflow() %>% 
+  add_model(knn_model) %>% 
+  add_recipe(recipe)
+
+# RANDOM FOREST
+rf_workflow <- workflow() %>% 
+  add_recipe(recipe) %>% 
+  add_model(rf_spec)
+
+# BOOSTED TREES
+boosted_workflow <- workflow() %>% 
+  add_recipe(recipe) %>% 
+  add_model(boosted_spec)
+```
+
+3.Create a tuning grid to specify the ranges of the parameters you wish to tune as well as how many levels of each.
+```{r}
+# LINEAR REGRESSION 
+# No grid because no tuning parameters
+
+# POLYNOMIAL REGRESSION
+degree_grid <- grid_regular(degree(range = c(1,3)), levels = 5)
+
+# K NEAREST NEIGHBORS
+knn_grid <- grid_regular(neighbors(range = c(1,15)), levels = 5)
+#A common practice is to take a square root of the total number of observations. 
+
+# RANDOM FOREST
+unique(train_data_developed$Country.Code)
+rf_parameter_grid <- grid_regular(mtry(range = c(1, 3)), trees(range = c(200,1000)), min_n(range = c(1,20)), levels = 8)
+
+
+# BOOSTED TREES
+boosted_grid <- grid_regular(
+  trees(range = c(100, 1000)),
+  learn_rate(range = c(0.0001, 0.01)),
+  min_n(range = c(15, 30)),
+  levels = 5
+)
+```
+
+4.Tune the model and specify the workflow, k-fold cross validation folds, and the tuning grid for our chosen parameters to tune.
+```{r}
+# LINEAR REGRESSION 
+# No tuning
+
+# POLYNOMIAL REGRESSION
+poly_tune <- tune_grid(
+  poly_wf,
+  resamples = folds_developed,
+  grid = degree_grid
+)
+
+# K NEAREST NEIGHBORS
+knn_tune <- tune_grid(
+    knn_workflow,
+    resamples = folds_developed,
+    grid = knn_grid
+)
+
+ # RANDOM FOREST
+rf_tune <- tune_grid(
+  rf_workflow,
+  resamples = folds_developed,
+  grid = rf_parameter_grid
+)
+autoplot(rf_tune)
+collect_metrics(rf_tune)
+
+# BOOSTED TREES
+boosted_tune_res <- tune_grid(
+  boosted_workflow,
+  resamples = folds_developed,
+  grid = boosted_grid
+)
+show_notes(.Last.tune.result)
+```
+
+5.Collect the metrics of the tuned models, arrange in ascending order of mean to see what the lowest RMSE for that tuned model is, and slice to choose only the lowest RMSE. Save the RMSE to a variable for comparison.
+```{r}
+# LINEAR REGRESSION 
+# Fitting the linear regression to the folds first (since it had no tuning)
+lm_fit <- fit_resamples(lm_workflow, resamples = folds_developed)
+lm_rmse <- collect_metrics(lm_fit) %>% 
+  filter(.metric == "rmse") %>%
+  arrange(mean)
+
+# POLYNOMIAL REGRESSION
+best_poly <- poly_tune %>%
+  collect_metrics() %>%
+  filter(.metric == "rmse") %>%
+  arrange(mean) %>% 
+  top_n(-1, wt = mean)
+
+best_poly_rmse <- best_poly$mean[1]
+
+
+# K Nearest Neighbors
+best_knn <- knn_tune %>%
+  collect_metrics() %>%
+  filter(.metric == "rmse") %>%
+  arrange(mean) %>%
+  top_n(-1, wt = mean);best_knn
+
+best_knn_rmse <- best_knn$mean[1]
+
+# Random Forest
+best_rf <- rf_tune %>%
+  collect_metrics() %>%
+  filter(.metric == "rmse") %>%
+  arrange(mean) %>%
+  top_n(-1, wt = mean);best_rf
+
+best_rf_rmse <- best_rf$mean[1]
+
+# Boosted Trees
+best_boosted <- boosted_tune_res %>%
+  collect_metrics() %>%
+  filter(.metric == "rmse") %>%
+  arrange(mean) %>%
+  top_n(-1, wt = mean);best_boosted
+
+best_boosted_rmse <- best_boosted$mean[1]
+```
+
+#### Model Results
+It’s finally time to compare the results of all of our models and see which ones performed the best!
+```{r}
+model_performance <- data.frame(
+  Model = c("Linear Regression", "Polynomial Regression", "K Nearest Neighbors", "Random Forest", "Boosted Trees"),
+  RMSE = c(lm_rmse$mean, best_poly_rmse, best_knn_rmse, best_rf_rmse, best_boosted_rmse)
+)
+print(model_performance)
+
+# Reorder the 'Model' factor levels by 'RMSE' values
+model_performance$Model <- with(model_performance, reorder(Model, RMSE))
+
+model_performance$Model <- with(model_performance, reorder(Model, RMSE))
+ggplot(model_performance, aes(x = Model, y = RMSE)) +
+  geom_bar(stat = "identity", aes(fill = Model)) +
+  theme(legend.position = "none") +
+  labs(title = "Comparing RMSE by Model")
+
+
+best_model <- model_performance %>%
+  arrange(RMSE) %>%
+  top_n(-1, wt = RMSE) %>%
+  pull(Model)
+
+print(paste("The best model is:", best_model,"with rmse being",best_rf_rmse))
+```
+From the performance of the models on the cross-validation data, we can see that the random forest performed the best! One key thing to note from these results is that it appears the linear and simpler models did the worst, which indicates that our data is probably nonlinear.
+
+
+#### Model Autoplots
+In R, the autoplot function enables us to graphically inspect how each of the tuned parameters influences the performance of every model. In these autoplot visualizations, the model's performance is gauged using the RMSE metric. Lower RMSE values signify a superior model performance, as they indicate smaller differences between the predicted and actual values.
+
+```{r}
+autoplot(rf_tune, metric = 'rmse')
+autoplot(boosted_tune_res, metric = 'rmse')
+```
+
+#### Results of the Best Model (Performance on the Folds)
+```{r}
+print(paste("The best model was Random Forest #12 with 3 predictors 542 trees, and a minimal node size of 1. It performed with rmse being",best_rf_rmse))
+best_rf
+```
+
+#### Fitting to Training Data
+Next, I will proceed with the top-performing model from the tuned random forest and fit it to our training data. This step allows the random forest model to learn one more time from the complete training dataset. Once the random forest model is fitted and trained on the training data, it will be primed and ready for the testing phase!
+
+#### Random Forest
+```{r}
+rf_final_workflow_train <- finalize_workflow(rf_workflow, best_rf)
+rf_final_fit_train <- fit(rf_final_workflow_train, data = train_data_developed)
+```
+
+#### Testing the model
+It's time to put our random forest model to the ultimate test by assessing its performance on a completely unseen dataset: the testing dataset. This step will help us understand how well our model generalizes to new data that it hasn't learned from during the training phase.
+```{r}
+developed_tibble <- predict(rf_final_fit_train, new_data = test_data_developed %>% select(-Unemployment))
+developed_tibble <- bind_cols(developed_tibble, test_data_developed %>% select(Unemployment))
+
+developed_metric <- metric_set(rmse)
+developed_tibble_metric <- developed_metric(developed_tibble, truth = Unemployment, estimate = .pred)
+developed_tibble_metric
+```
+
+```{r}
+print(paste("Our Random Forest model performed slightly worse on the testing set than on the cross-validation folds, with an RMSE of", developed_tibble_metric$.estimate, ". The training set had an RMSE of", best_rf_rmse, ". While this discrepancy could be attributed to overfitting, the RMSE is already quite low. Therefore, I don't believe there's a significant cause for concern."))
+```
+
+#### Let's see how it performs on Boosted Trees
+```{r}
+boosted_final_workflow_train <- finalize_workflow(boosted_workflow, best_boosted)
+boosted_final_fit_train <- fit(boosted_final_workflow_train, data = train_data_developed)
+developed_tibble_boosted <- predict(boosted_final_fit_train, new_data = test_data_developed %>% select(-Unemployment))
+developed_tibble_boosted <- bind_cols(developed_tibble_boosted, test_data_developed %>% select(Unemployment))
+developed_metric_boosted <- metric_set(rmse)
+developed_tibble_metric_boosted <- developed_metric_boosted(developed_tibble_boosted, truth = Unemployment, estimate = .pred)
+developed_tibble_metric_boosted$.estimate
+```
+
+```{r}
+print(paste("Our Boosted Trees model performed noticeably worse on the testing set than on the cross-validation folds, with an RMSE of", developed_tibble_metric_boosted$.estimate, ". The training set had an RMSE of", best_boosted$mean, ". This discrepancy might be a sign of overfitting. Despite the RMSE being higher than the Random Forest model, it is still reasonably low, but this is something we should monitor and potentially attempt to improve."))
+```
+
+#### Plotting Predicted Values VS the actual values for top 2 models
+We might also be interested in a plot of the predicted values versus the actual values.
+```{r}
+developed_tibble %>% 
+  ggplot(aes(x = .pred, y = Unemployment)) +
+  geom_point(alpha = 0.4) +
+  geom_abline(lty = 2) +
+  theme_grey() +
+  coord_obs_pred() +
+  labs(title = "Predicted Values vs. Actual Values for Random Forest Model")
+```
+
+Plotting Predicted Values VS the actual values for Boosted Trees
+```{r}
+developed_tibble_boosted %>% 
+  ggplot(aes(x = .pred, y = Unemployment)) +
+  geom_point(alpha = 0.4) +
+  geom_abline(lty = 2) +
+  theme_grey() +
+  coord_obs_pred() +
+  labs(title = "Predicted Values vs. Actual Values for Boosted Trees")
+```
+
+
+#### Variable Importance Analysis
+
+An impressive feature of random forest models is their ability to indicate which variables hold the most significance in predicting the outcome. This is conveniently visualized through a Variable Importance Plot (VIP). This plot provides us with valuable insights by ranking the predictors based on their importance in influencing the model's predictions.
+```{r}
+rf_final_fit_train %>% extract_fit_parsnip() %>%
+    vip(aesthetics = list(fill = "brown3", color = "cyan4"))
+```
+
+
+
+
+
+
+
+### Emerging Countries 
+#### Visual EDA (Exploratory data analysis)
+Now, we will work on Emerging Countries!
+Emerging countries data set includes ARM, AZE, BGR, BRA, CHN, CYP, CZE, EST, HRV, HUN, IND, ISR, KAZ, KGZ, KOR, LTU, LVA, MEX, MLT, MNG, POL, ROU, RUS, SVK, SVN, THA, TJK, TUR, UZB, ZAF
+```{r}
+ggplot(data_emerging, aes(Unemployment)) +
+  geom_bar(fill='cyan4') +
+  labs(
+    title = "Distribution of Unemployment Rate"
+  )
+```
+
+Correlation analysis
+
+```{r}
+developed_numeric <- data_emerging %>%
+  select_if(is.numeric)
+
+# Correlation matrix
+developed_cor <- cor(developed_numeric);developed_cor
+
+# Visualization of correlation matrix
+developed_corrplot <- corrplot(developed_cor, method = "circle", addCoef.col = 1, number.cex = 0.7)
+```
+
+From the correlation analysis conducted on emerging economies data, several key observations are noted. Primarily, there is a moderate positive correlation between the Year and the Diffusion of New Technology. This signifies that with the passage of time, the diffusion of new technologies in these emerging economies has increased. However, the Year's correlation with other variables such as R&D expenditure (RD_exp), Unemployment, and Creation of New Technology is relatively weak. This insinuates that time might not significantly linearly impact these factors in the context of emerging economies. Furthermore, RD_exp exhibits a weak, albeit positive, correlation with the Creation of New Technology, suggesting that while an increase in R&D spending is generally associated with a rise in the creation of new technology, the relationship is not particularly robust. It indicates that other factors might also be significant contributors to the creation of new technology, beyond just R&D expenditure. Unemployment, intriguingly, displays a weak negative correlation with the Diffusion of New Technology. This could imply that during periods of high unemployment, the diffusion of new technology could decrease, potentially due to economic constraints that impede the widespread adoption of new technologies. Finally, the correlation between the Creation of New Technology and the Diffusion of New Technology is close to zero. This suggests that these two processes may largely operate independently of each other within emerging economies. Given these low to moderate correlation values, it's clear that the relationships between these variables are not strongly linear in nature. Consequently, a non-linear modeling approach or a model considering interaction terms might be more suited for accurately representing these relationships in the context of emerging economies.
+
+#### Data Partitioning
+```{r}
+# Initial split for each group: 70% for training, 30% for testing
+# Emerging
+set.seed(54366)
+data_split_emerging <- initial_split(data_emerging, prop = 0.7)
+train_data_emerging <- training(data_split_emerging)
+test_data_emerging <- testing(data_split_emerging)
+nrow(train_data_emerging)/nrow(data_emerging)
+```
+
+#### Visual EDA fpr developed countries
+```{r}
+ggplot(train_data_emerging, aes(Country.Code)) +
+  geom_bar(fill='brown3') +
+  labs(
+    title = "Distribution of Country.Code"
+  )
+ggplot(train_data_emerging, aes(Unemployment)) +
+  geom_bar(fill='cyan4') +
+  labs(
+    title = "Distribution of Unemployment Rate"
+  )
+```
+
+#### Recipe Creation
+```{r}
+str(train_data_emerging)
+
+recipe_emerging <- recipe(Unemployment ~ ., data = train_data_emerging) %>%
+  step_zv(all_predictors()) %>%
+  step_rm(Country.Code) %>% 
+  step_center(all_numeric_predictors(), -all_outcomes()) %>%
+  step_scale(all_numeric_predictors(), -all_outcomes())
+
+prep(recipe_emerging) %>% 
+  bake(new_data = train_data_emerging) %>% 
+  head() %>% 
+  kable() %>% 
+  kable_styling(full_width = F) %>% 
+  scroll_box(width = "100%", height = "200px")
+```
+
+#### K-Fold Modeling
+```{r}
+folds_emerging <- vfold_cv(train_data_emerging, v = 5)
+```
+
+#### Model Building
+1.I've chosen Root Mean Squared Error (RMSE) as the go-to metric. RMSE is a frequently used metric for evaluating regression models.
+In my modeling endeavor, I am fitting five distinct models to the data. However, to maintain focus and deliver effective results, I'll hone in on the two best-performing models for further analysis. Let's commence the exciting journey of model building!
+
+#### Fitting the models
+Now, I'm setting up multiple types of models that I will fit to the data. Here are the models I'm preparing:
+
+1. Linear Regression: A simple linear model for regression. It assumes a linear relationship between the predictor and the outcome variable.
+
+2. Polynomial Regression: This model incorporates polynomial terms to capture non-linear relationships in the data. Here, I'm planning to tune the degree of the polynomial.
+
+3. K Nearest Neighbors (KNN): KNN uses the 'K' closest observations to predict an observation's value. I'll tune the number of neighbors parameter in this model.
+
+4. Random Forest: An ensemble learning method that operates by constructing multiple decision trees. It provides an improvement over single decision trees by reducing overfitting. I'll be tuning the number of predictors, the number of trees, and the minimum number of values in each node.
+
+5. Boosted Trees: Boosted trees sequentially build decision trees where each tree corrects the errors of the previous one. I will tune the number of trees, the learning rate, and the minimum number of observations in the node.
+```{r}
+# LINEAR REGRESSION 
+lm_model <- linear_reg() %>% 
+  set_engine("lm")
+
+# POLYNOMIAL REGRESSION
+# Adjusting the recipe because the tuning parameter must be added in the recipe for polynomial regression
+# Tuning the degree
+poly_rec <- recipe_emerging %>% 
+  step_poly(RD_exp, Creation_of_New_Technology, Diffusion_of_New_Technology, degree = tune())
+
+poly_spec <- linear_reg() %>% 
+  set_mode("regression") %>% 
+  set_engine("lm")
+
+# K NEAREST NEIGHBORS
+# Tuning the number of neighbors
+knn_model <- nearest_neighbor(neighbors = tune()) %>% 
+  set_mode("regression") %>% 
+  set_engine("kknn")
+
+# RANDOM FOREST
+# Tuning mtry (number of predictors), trees, and min_n (number of minimum values in each node)
+rf_spec <- rand_forest(mtry = tune(), 
+                       trees = tune(), 
+                       min_n = tune()) %>% 
+  set_engine("ranger", importance = "impurity") %>% 
+  set_mode("regression")
+
+# BOOSTED TREES
+# Tuning trees, learn_rate (the learning rate), and min_n
+boosted_spec <- boost_tree(trees = tune(),
+                           learn_rate = tune(),
+                           min_n = tune()) %>%
+  set_engine("xgboost") %>%
+  set_mode("regression")
+```
+
+2.Set up the workflows and add the model and the recipe
+```{r}
+# LINEAR REGRESSION 
+lm_workflow <- workflow() %>% 
+  add_model(lm_model) %>% 
+  add_recipe(recipe_emerging)
+
+# POLYNOMIAL REGRESSION
+poly_wf <- workflow() %>% 
+  add_model(poly_spec) %>% 
+  add_recipe(poly_rec)
+
+# K NEAREST NEIGHBORS
+knn_workflow <- workflow() %>% 
+  add_model(knn_model) %>% 
+  add_recipe(recipe_emerging)
+
+# RANDOM FOREST
+rf_workflow <- workflow() %>% 
+  add_recipe(recipe_emerging) %>% 
+  add_model(rf_spec)
+
+# BOOSTED TREES
+boosted_workflow <- workflow() %>% 
+  add_recipe(recipe_emerging) %>% 
+  add_model(boosted_spec)
+```
+
+3.Create a tuning grid to specify the ranges of the parameters you wish to tune as well as how many levels of each.
+```{r}
+# LINEAR REGRESSION 
+# No grid because no tuning parameters
+
+# POLYNOMIAL REGRESSION
+degree_grid <- grid_regular(degree(range = c(1,3)), levels = 5)
+
+# K NEAREST NEIGHBORS
+knn_grid <- grid_regular(neighbors(range = c(1,20)), levels = 5)
+#A common practice is to take a square root of the total number of observations. 
+#Since there are 226 observations in train_data_developed, 1:15 is very resonable.
+
+# RANDOM FOREST
+rf_parameter_grid <- grid_regular(mtry(range = c(1, 3)), trees(range = c(200,1000)), min_n(range = c(1,20)), levels = 8)
+
+mtry_range <- c(1, 3)
+trees_range <- c(100, 1200)
+min_n_range <- c(1, 30)
+
+rf_parameter_grid <- grid_regular(
+  mtry(range = mtry_range), 
+  trees(range = trees_range), 
+  min_n(range = min_n_range), 
+  levels = 10)
+
+# BOOSTED TREES
+boosted_grid <- grid_regular(
+  trees(range = c(100, 1000)),
+  learn_rate(range = c(0.0001, 0.01)),
+  min_n(range = c(15, 30)),
+  levels = 5
+)
+```
+
+4.Tune the model and specify the workflow, k-fold cross validation folds, and the tuning grid for our chosen parameters to tune.
+```{r}
+# LINEAR REGRESSION 
+# No tuning
+
+# POLYNOMIAL REGRESSION
+poly_tune <- tune_grid(
+  poly_wf,
+  resamples = folds_emerging,
+  grid = degree_grid
+)
+
+# K NEAREST NEIGHBORS
+knn_tune <- tune_grid(
+    knn_workflow,
+    resamples = folds_emerging,
+    grid = knn_grid
+)
+
+ # RANDOM FOREST
+rf_tune <- tune_grid(
+  rf_workflow,
+  resamples = folds_emerging,
+  grid = rf_parameter_grid
+)
+
+# BOOSTED TREES
+boosted_tune_res <- tune_grid(
+  boosted_workflow,
+  resamples = folds_emerging,
+  grid = boosted_grid
+)
+```
+
+5.Collect the metrics of the tuned models, arrange in ascending order of mean to see what the lowest RMSE for that tuned model is, and slice to choose only the lowest RMSE. Save the RMSE to a variable for comparison.
+```{r}
+# LINEAR REGRESSION 
+# Fitting the linear regression to the folds first (since it had no tuning)
+lm_fit <- fit_resamples(lm_workflow, resamples = folds_emerging)
+lm_rmse <- collect_metrics(lm_fit) %>% 
+  filter(.metric == "rmse") %>%
+  arrange(mean)
+
+# POLYNOMIAL REGRESSION
+best_poly <- poly_tune %>%
+  collect_metrics() %>%
+  filter(.metric == "rmse") %>%
+  arrange(mean) %>% 
+  top_n(-1, wt = mean)
+
+best_poly_rmse <- best_poly$mean[1]
+
+
+# K Nearest Neighbors
+best_knn <- knn_tune %>%
+  collect_metrics() %>%
+  filter(.metric == "rmse") %>%
+  arrange(mean) %>%
+  top_n(-1, wt = mean);best_knn
+
+best_knn_rmse <- best_knn$mean[1]
+
+# Random Forest
+best_rf <- rf_tune %>%
+  collect_metrics() %>%
+  filter(.metric == "rmse") %>%
+  arrange(mean) %>%
+  top_n(-1, wt = mean);best_rf
+
+best_rf_rmse <- best_rf$mean[1]
+
+# Boosted Trees
+best_boosted <- boosted_tune_res %>%
+  collect_metrics() %>%
+  filter(.metric == "rmse") %>%
+  arrange(mean) %>%
+  top_n(-1, wt = mean);best_boosted
+
+best_boosted_rmse <- best_boosted$mean[1]
+```
+
+#### Model Results
+It’s finally time to compare the results of all of our models and see which ones performed the best!
+```{r}
+model_performance <- data.frame(
+  Model = c("Linear Regression", "Polynomial Regression", "K Nearest Neighbors", "Random Forest", "Boosted Trees"),
+  RMSE = c(lm_rmse$mean, best_poly_rmse, best_knn_rmse, best_rf_rmse, best_boosted_rmse)
+)
+print(model_performance)
+
+# Reorder the 'Model' factor levels by 'RMSE' values
+model_performance$Model <- with(model_performance, reorder(Model, RMSE))
+
+ggplot(model_performance, aes(x = Model, y = RMSE)) +
+  geom_bar(stat = "identity", aes(fill = Model)) +
+  theme(legend.position = "none") +
+  labs(title = "Comparing RMSE by Model")
+
+
+best_model <- model_performance %>%
+  arrange(RMSE) %>%
+  top_n(-1, wt = RMSE) %>%
+  pull(Model)
+
+print(paste("The best model is:", best_model,"with rmse being",best_rf_rmse))
+```
+From the performance of the models on the cross-validation data, we can see that the random forest performed the best! One key thing to note from these results is that it appears the linear and simpler models did the worst, which indicates that our data is probably nonlinear.
+
+#### Model Autoplots
+```{r}
+autoplot(rf_tune, metric = 'rmse')
+autoplot(boosted_tune_res, metric = 'rmse')
+```
+
+#### Results of the Best Model (Performance on the Folds)
+```{r}
+print(paste("The best model was Random Forest #12 with 3 predictors, 466 trees, and a minimal node size of 1. It performed with rmse being",best_rf$mean))
+best_rf
+```
+
+#### Fitting to Training Data
+Next, I will proceed with the top-performing model from the tuned random forest and fit it to our training data. This step allows the random forest model to learn one more time from the complete training dataset. Once the random forest model is fitted and trained on the training data, it will be primed and ready for the testing phase!
+```{r}
+rf_final_workflow <- finalize_workflow(rf_workflow, best_rf)
+rf_final_fit <- fit(rf_final_workflow, data = train_data_emerging)
+```
+
+#### Testing the model
+It's time to put our random forest model to the ultimate test by assessing its performance on a completely unseen dataset: the testing dataset. This step will help us understand how well our model generalizes to new data that it hasn't learned from during the training phase.
+```{r}
+emerging_tibble_rf <- predict(rf_final_fit, new_data = test_data_emerging %>% select(-Unemployment))
+emerging_tibble_rf <- bind_cols(emerging_tibble_rf, test_data_emerging %>% select(Unemployment))
+
+emerging_metric_rf <- metric_set(rmse)
+emerging_tibble_metric_rf <- emerging_metric_rf(emerging_tibble_rf, truth = Unemployment, estimate = .pred)
+
+emerging_tibble_metric_rf$.estimate
+```
+
+```{r}
+print(paste("Our Random Forest model showed a commendable performance on the testing set with an RMSE of", 
+            emerging_tibble_metric_rf$.estimate, 
+            ". The training set had an RMSE of", 
+            best_rf$mean, 
+            ", indicating a negligible difference,",emerging_tibble_metric_rf$.estimate-best_rf$mean,", between the training and testing error. This suggests a well-generalized model with minimal signs of overfitting. Despite the higher RMSE on the training set compared to the Boosted Trees model, the Random Forest model performed better on the testing set, suggesting potential robustness in unseen data scenarios."))
+```
+
+#### Let's see how it performs on Boosted Trees model
+```{r}
+B_final_workflow_train_emerging <- finalize_workflow(boosted_workflow, best_boosted)
+B_final_fit_train_emerging <- fit(B_final_workflow_train_emerging, data = train_data_emerging)
+B_emerging_tibble <- predict(B_final_fit_train_emerging, new_data = test_data_emerging %>% select(-Unemployment))
+B_emerging_tibble <- bind_cols(B_emerging_tibble, test_data_emerging %>% select(Unemployment))
+
+B_emerging_metric <- metric_set(rmse)
+B_emerging_tibble_metric <- B_emerging_metric(B_emerging_tibble, truth = Unemployment, estimate = .pred)
+B_emerging_tibble_metric
+```
+
+```{r}
+print(paste("Our Boosted Trees model performed better on the training set than on the test set, evidenced by a lower RMSE of", best_boosted$mean, "on the training data. On the other hand, the testing set showed a slightly higher RMSE of", B_emerging_tibble_metric$.estimate, ". This difference, amounting to", B_emerging_tibble_metric$.estimate - best_boosted$mean, ", may indicate a slight overfitting to the training data. However, considering the relatively low RMSE values in both cases, this model appears to be a robust predictor of unemployment rates within the given context. Nevertheless, further investigation into this discrepancy may provide deeper insights into improving the model's performance on unseen data."))
+
+```
+
+#### Plotting Predicted Values VS the actual values for the top two models
+We might also be interested in a plot of the predicted values versus the actual values.
+Random Forest Model
+```{r}
+emerging_tibble_rf %>% 
+  ggplot(aes(x = .pred, y = Unemployment)) +
+  geom_point(alpha = 0.4) +
+  geom_abline(lty = 2) +
+  theme_grey() +
+  coord_obs_pred() +
+  labs(title = "Predicted Values vs. Actual Values for Random Forest Model")
+```
+
+Plotting Predicted Values VS the actual values for Boosted Trees Model
+```{r}
+B_emerging_tibble %>% 
+  ggplot(aes(x = .pred, y = Unemployment)) +
+  geom_point(alpha = 0.4) +
+  geom_abline(lty = 2) +
+  theme_grey() +
+  coord_obs_pred() +
+  labs(title = "Predicted Values vs. Actual Values for Boosted Trees Model")
+```
+
+
+#### Variable Importance Analysis
+An impressive feature of random forest models is their ability to indicate which variables hold the most significance in predicting the outcome. This is conveniently visualized through a Variable Importance Plot (VIP). This plot provides us with valuable insights by ranking the predictors based on their importance in influencing the model's predictions.
+```{r}
+rf_final_fit %>% extract_fit_parsnip() %>%
+    vip(aesthetics = list(fill = "brown3", color = "cyan4"))
+```
+
+
+
+
+
+
+### Less Deveoped Countries
+
+Now, we will work on Less Developed Countries!
+Less developed countries data set includes ARG, BLR, COL, CRI, CUB, EGY, ESP, GRC, ITA, KWT, MDA, MKD, PAN, PRT, SRB, TTO, TUN, UKR
+
+#### Visual EDA (Exploratory data analysis)
+Now, we will work on Less Developed Countries!
+```{r}
+ggplot(data_less_developed, aes(Unemployment)) +
+  geom_bar(fill='cyan4') +
+  labs(
+    title = "Distribution of Unemployment Rate"
+  )
+```
+
+Correlation plot
+```{r}
+less_developed_numeric <- data_less_developed %>%
+  select_if(is.numeric)
+
+# Correlation matrix
+less_developed_cor <- cor(less_developed_numeric);less_developed_cor
+
+# Visualization of correlation matrix
+less_developed_corrplot <- corrplot(less_developed_cor, method = "circle", addCoef.col = 1, number.cex = 0.7)
+```
+
+In our analysis of the less-developed countries data, a number of significant observations can be drawn. Foremost, there's a high positive correlation between the Year and the Diffusion of New Technology, indicating that as time progresses, the diffusion of new technologies in these less-developed economies has seen a marked increase. However, the correlation of the Year with other factors such as R&D expenditure (RD_exp), Unemployment, and Creation of New Technology is relatively insignificant, implying that time might not have a significant linear impact on these variables in the context of less-developed economies. The correlation between RD_exp and the Creation of New Technology is strongly positive, suggesting that increased R&D spending is significantly associated with an increase in the creation of new technology. This indicates that investments in R&D are contributing effectively to technological innovation within these countries. The correlation between RD_exp and Unemployment is weak but positive. This might imply that increased investment in R&D, while fostering innovation, might not have a strong direct impact on reducing unemployment rates, indicating the need for strategies that directly address job creation even as technological capacities expand. Interestingly, the correlation between the Creation of New Technology and the Diffusion of New Technology is weak, suggesting that while new technologies are being created, they may not be getting widely adopted or diffused within these economies. This could highlight potential barriers to the diffusion of new technologies that might need to be addressed to fully capitalize on technological advancements. Given the mix of weak and strong correlation values, it's clear that the relationships between these variables are complex. Consequently, a modeling approach that considers non-linear relationships or interaction terms might provide more accurate representations of these relationships within the context of less-developed economies.
+
+#### Data Partitioning
+```{r}
+# Initial split for each group: 70% for training, 30% for testing
+set.seed(54366)
+data_split_less_developed <- initial_split(data_less_developed, prop = 0.7)
+train_data_less_developed <- training(data_split_less_developed)
+test_data_less_developed <- testing(data_split_less_developed)
+nrow(data_split_less_developed)/nrow(data_less_developed)
+```
+
+#### Visual EDA fpr developed countries
+```{r}
+ggplot(train_data_less_developed, aes(Country.Code)) +
+  geom_bar(fill='brown3') +
+  labs(
+    title = "Distribution of Country.Code"
+  )
+ggplot(train_data_less_developed, aes(Unemployment)) +
+  geom_bar(fill='cyan4') +
+  labs(
+    title = "Distribution of Unemployment Rate"
+  )
+```
+
+#### Recipe Creation
+```{r}
+str(train_data_less_developed)
+
+recipe_less_developed <- recipe(Unemployment ~ ., data = train_data_less_developed) %>%
+  step_zv(all_predictors()) %>%
+  step_rm(Country.Code) %>% 
+  step_center(all_numeric_predictors(), -all_outcomes()) %>%
+  step_scale(all_numeric_predictors(), -all_outcomes())
+
+prep(recipe_less_developed) %>% 
+  bake(new_data = train_data_less_developed) %>% 
+  head() %>% 
+  kable() %>% 
+  kable_styling(full_width = F) %>% 
+  scroll_box(width = "100%", height = "200px")
+```
+
+#### K-Fold Modeling
+```{r}
+folds_less_developed <- vfold_cv(train_data_less_developed, v = 5)
+```
+
+#### Model Building
+1.I've chosen Root Mean Squared Error (RMSE) as the go-to metric. RMSE is a frequently used metric for evaluating regression models.
+In my modeling endeavor, I am fitting five distinct models to the data. However, to maintain focus and deliver effective results, I'll hone in on the two best-performing models for further analysis. Let's commence the exciting journey of model building!
+
+#### Fitting the models
+Now, I'm setting up multiple types of models that I will fit to the data. Here are the models I'm preparing:
+
+1. Linear Regression: A simple linear model for regression. It assumes a linear relationship between the predictor and the outcome variable.
+
+2. Polynomial Regression: This model incorporates polynomial terms to capture non-linear relationships in the data. Here, I'm planning to tune the degree of the polynomial.
+
+3. K Nearest Neighbors (KNN): KNN uses the 'K' closest observations to predict an observation's value. I'll tune the number of neighbors parameter in this model.
+
+4. Random Forest: An ensemble learning method that operates by constructing multiple decision trees. It provides an improvement over single decision trees by reducing overfitting. I'll be tuning the number of predictors, the number of trees, and the minimum number of values in each node.
+
+5. Boosted Trees: Boosted trees sequentially build decision trees where each tree corrects the errors of the previous one. I will tune the number of trees, the learning rate, and the minimum number of observations in the node.
+```{r}
+# LINEAR REGRESSION 
+lm_model <- linear_reg() %>% 
+  set_engine("lm")
+
+# POLYNOMIAL REGRESSION
+# Adjusting the recipe because the tuning parameter must be added in the recipe for polynomial regression
+# Tuning the degree
+poly_rec <- recipe_less_developed %>% 
+  step_poly(RD_exp, Creation_of_New_Technology, Diffusion_of_New_Technology, degree = tune())
+
+poly_spec <- linear_reg() %>% 
+  set_mode("regression") %>% 
+  set_engine("lm")
+
+# K NEAREST NEIGHBORS
+# Tuning the number of neighbors
+knn_model <- nearest_neighbor(neighbors = tune()) %>% 
+  set_mode("regression") %>% 
+  set_engine("kknn")
+
+# RANDOM FOREST
+# Tuning mtry (number of predictors), trees, and min_n (number of minimum values in each node)
+rf_spec <- rand_forest(mtry = tune(), 
+                       trees = tune(), 
+                       min_n = tune()) %>% 
+  set_engine("ranger", importance = "impurity") %>% 
+  set_mode("regression")
+
+# BOOSTED TREES
+# Tuning trees, learn_rate (the learning rate), and min_n
+boosted_spec <- boost_tree(trees = tune(),
+                           learn_rate = tune(),
+                           min_n = tune()) %>%
+  set_engine("xgboost") %>%
+  set_mode("regression")
+```
+
+2.Set up the workflows and add the model and the recipe
+```{r}
+# LINEAR REGRESSION 
+lm_workflow <- workflow() %>% 
+  add_model(lm_model) %>% 
+  add_recipe(recipe_less_developed)
+
+# POLYNOMIAL REGRESSION
+poly_wf <- workflow() %>% 
+  add_model(poly_spec) %>% 
+  add_recipe(poly_rec)
+
+# K NEAREST NEIGHBORS
+knn_workflow <- workflow() %>% 
+  add_model(knn_model) %>% 
+  add_recipe(recipe_less_developed)
+
+# RANDOM FOREST
+rf_workflow <- workflow() %>% 
+  add_recipe(recipe_less_developed) %>% 
+  add_model(rf_spec)
+
+# BOOSTED TREES
+boosted_workflow <- workflow() %>% 
+  add_recipe(recipe_less_developed) %>% 
+  add_model(boosted_spec)
+```
+
+3.Create a tuning grid to specify the ranges of the parameters you wish to tune as well as how many levels of each.
+```{r}
+# LINEAR REGRESSION 
+# No grid because no tuning parameters
+
+# POLYNOMIAL REGRESSION
+degree_grid <- grid_regular(degree(range = c(1,3)), levels = 5)
+
+# K NEAREST NEIGHBORS
+knn_grid <- grid_regular(neighbors(range = c(1,15)), levels = 5)
+
+# RANDOM FOREST
+mtry_range <- c(1, 3)
+trees_range <- c(100, 1200)
+min_n_range <- c(1, 30)
+
+# Increased levels for more granularity
+rf_parameter_grid <- grid_regular(
+  mtry(range = mtry_range), 
+  trees(range = trees_range), 
+  min_n(range = min_n_range), 
+  levels = 10
+)
+
+# BOOSTED TREES
+boosted_grid <- grid_regular(
+  trees(range = c(100, 1000)),
+  learn_rate(range = c(0.0001, 0.01)),
+  min_n(range = c(15, 30)),
+  levels = 5
+)
+```
+
+4.Tune the model and specify the workflow, k-fold cross validation folds, and the tuning grid for our chosen parameters to tune.
+```{r}
+# LINEAR REGRESSION 
+# No tuning
+
+# POLYNOMIAL REGRESSION
+poly_tune <- tune_grid(
+  poly_wf,
+  resamples = folds_less_developed,
+  grid = degree_grid
+)
+
+# K NEAREST NEIGHBORS
+knn_tune <- tune_grid(
+    knn_workflow,
+    resamples = folds_less_developed,
+    grid = knn_grid
+)
+
+ # RANDOM FOREST
+rf_tune <- tune_grid(
+  rf_workflow,
+  resamples = folds_less_developed,
+  grid = rf_parameter_grid
+)
+
+# BOOSTED TREES
+boosted_tune_res <- tune_grid(
+  boosted_workflow,
+  resamples = folds_less_developed,
+  grid = boosted_grid
+)
+```
+
+5.Collect the metrics of the tuned models, arrange in ascending order of mean to see what the lowest RMSE for that tuned model is, and slice to choose only the lowest RMSE. Save the RMSE to a variable for comparison.
+```{r}
+# LINEAR REGRESSION 
+# Fitting the linear regression to the folds first (since it had no tuning)
+lm_fit <- fit_resamples(lm_workflow, resamples = folds_less_developed)
+lm_rmse <- collect_metrics(lm_fit) %>% 
+  filter(.metric == "rmse") %>%
+  arrange(mean)
+
+# POLYNOMIAL REGRESSION
+best_poly <- poly_tune %>%
+  collect_metrics() %>%
+  filter(.metric == "rmse") %>%
+  arrange(mean) %>% 
+  top_n(-1, wt = mean)
+
+best_poly_rmse <- best_poly$mean[1]
+
+
+# K Nearest Neighbors
+best_knn <- knn_tune %>%
+  collect_metrics() %>%
+  filter(.metric == "rmse") %>%
+  arrange(mean) %>%
+  top_n(-1, wt = mean);best_knn
+
+best_knn_rmse <- best_knn$mean[1]
+
+# Random Forest
+best_rf <- rf_tune %>%
+  collect_metrics() %>%
+  filter(.metric == "rmse") %>%
+  arrange(mean) %>%
+  top_n(-1, wt = mean);best_rf
+
+best_rf_rmse <- best_rf$mean[1]
+
+# Boosted Trees
+best_boosted <- boosted_tune_res %>%
+  collect_metrics() %>%
+  filter(.metric == "rmse") %>%
+  arrange(mean) %>%
+  top_n(-1, wt = mean);best_boosted
+
+best_boosted_rmse <- best_boosted$mean[1]
+```
+
+#### Model Results
+It’s finally time to compare the results of all of our models and see which ones performed the best!
+```{r}
+model_performance <- data.frame(
+  Model = c("Linear Regression", "Polynomial Regression", "K Nearest Neighbors", "Random Forest", "Boosted Trees"),
+  RMSE = c(lm_rmse$mean, best_poly_rmse, best_knn_rmse, best_rf_rmse, best_boosted_rmse)
+)
+print(model_performance)
+
+# Reorder the 'Model' factor levels by 'RMSE' values
+model_performance$Model <- with(model_performance, reorder(Model, RMSE))
+
+ggplot(model_performance, aes(x = Model, y = RMSE)) +
+  geom_bar(stat = "identity", aes(fill = Model)) +
+  theme(legend.position = "none") +
+  labs(title = "Comparing RMSE by Model")
+
+
+best_model <- model_performance %>%
+  arrange(RMSE) %>%
+  top_n(-1, wt = RMSE) %>%
+  pull(Model)
+
+print(paste("The best model is:", best_model,"with rmse being",best_rf_rmse))
+```
+From the performance of the models on the cross-validation data, we can see that the random forest performed the best! One key thing to note from these results is that it appears the linear and simpler models did the worst, which indicates that our data is probably nonlinear.
+
+#### Model Autoplots
+```{r}
+autoplot(rf_tune, metric = 'rmse')
+autoplot(boosted_tune_res, metric = 'rmse')
+```
+
+#### Results of the Best Model (Performance on the Folds)
+```{r}
+print(paste("The best model was Boosted Trees #18 with 711 trees, and a minimal node size of 1. It performed with rmse being",best_rf_rmse))
+best_rf
+```
+
+#### Fitting to Training Data
+Next, I will proceed with the top-performing model from the tuned random forest and fit it to our training data. This step allows the random forest model to learn one more time from the complete training dataset. Once the random forest model is fitted and trained on the training data, it will be primed and ready for the testing phase!
+
+```{r}
+rf_final_workflow_train_less_developed <- finalize_workflow(rf_workflow, best_rf)
+rf_final_fit_train_less_developed <- fit(rf_final_workflow_train_less_developed, data = train_data_less_developed)
+```
+
+#### Testing the model
+It's time to put our random forest model to the ultimate test by assessing its performance on a completely unseen dataset: the testing dataset. This step will help us understand how well our model generalizes to new data that it hasn't learned from during the training phase.
+
+#### Random Forest model
+```{r}
+less_developed_tibble_rf <- predict(rf_final_fit_train_less_developed, new_data = test_data_less_developed %>% select(-Unemployment))
+less_developed_tibble_rf <- bind_cols(less_developed_tibble_rf, test_data_less_developed %>% select(Unemployment))
+
+less_developed_metric_rf <- metric_set(rmse)
+less_developed_tibble_metric_rf <- less_developed_metric_rf(less_developed_tibble_rf, truth = Unemployment, estimate = .pred)
+
+less_developed_tibble_metric_rf$.estimate
+```
+
+```{r}
+print(paste("The performance of our Random Forest model on the testing set is quite noteworthy, with an RMSE of", less_developed_tibble_metric_rf$.estimate, ". Interestingly, the RMSE for the training set is", best_rf$mean, ", which is slightly higher than that of the testing set. This difference, ", best_rf$mean-less_developed_tibble_metric_rf$.estimate, ", is quite marginal, implying that our model generalizes well without significant overfitting."))
+```
+
+#### Let's see how it performs on Boosted Trees model
+```{r}
+B_final_workflow_train_less_developed <- finalize_workflow(boosted_workflow, best_boosted)
+B_final_fit_train_less_developed <- fit(B_final_workflow_train_less_developed, data = train_data_less_developed)
+
+B_less_developed_tibble <- predict(B_final_fit_train_less_developed, new_data = test_data_less_developed %>% select(-Unemployment))
+B_less_developed_tibble <- bind_cols(B_less_developed_tibble, test_data_less_developed %>% select(Unemployment))
+
+B_less_developed_metric <- metric_set(rmse)
+B_less_developed_metric <- B_less_developed_metric(B_less_developed_tibble, truth = Unemployment, estimate = .pred)
+B_less_developed_metric
+```
+
+```{r}
+print(paste("Interestingly, our Boosted Trees model, while showing impressive performance on the training set with an RMSE of", 
+            best_boosted$mean, 
+            ", was actually outperformed by the test set. The test set achieved a lower RMSE of", 
+            B_less_developed_metric$.estimate, 
+            ". The difference of", 
+            best_boosted$mean -B_less_developed_metric$.estimate, 
+            "might suggest that the model is slightly overfitting to the training data. However, given the low RMSE values in both the training and testing scenarios, we can confidently consider this model to be a robust tool for predicting unemployment rates within our specific context. Despite this, it would be worthwhile to further investigate this discrepancy in order to glean deeper insights and potentially enhance the model's performance on unseen data."))
+
+```
+
+#### Plotting Predicted Values VS the actual values for the top two models
+We might also be interested in a plot of the predicted values versus the actual values.
+Random Forest Model
+```{r}
+less_developed_tibble_rf %>% 
+  ggplot(aes(x = .pred, y = Unemployment)) +
+  geom_point(alpha = 0.4) +
+  geom_abline(lty = 2) +
+  theme_grey() +
+  coord_obs_pred() +
+  labs(title = "Predicted Values vs. Actual Values for Random Forest Model")
+```
+
+Plotting Predicted Values VS the actual values for Boosted Trees Model
+```{r}
+B_less_developed_tibble %>% 
+  ggplot(aes(x = .pred, y = Unemployment)) +
+  geom_point(alpha = 0.4) +
+  geom_abline(lty = 2) +
+  theme_grey() +
+  coord_obs_pred() +
+  labs(title = "Predicted Values vs. Actual Values for Boosted Trees Model")
+```
+
+
+#### Variable Importance Analysis
+An impressive feature of random forest models is their ability to indicate which variables hold the most significance in predicting the outcome. This is conveniently visualized through a Variable Importance Plot (VIP). This plot provides us with valuable insights by ranking the predictors based on their importance in influencing the model's predictions.
+```{r}
+rf_final_fit_train_less_developed %>% extract_fit_parsnip() %>%
+    vip(aesthetics = list(fill = "brown3", color = "cyan4"))
+```
+
+
+### Conclusion
+In the quest to predict unemployment rates based on technological advancements, the Random Forest model emerged as the best model for all data sets, regardless of the countries' development status. Its non-parametric nature and inherent flexibility, which allows it to handle complex interactions and nonlinear relationships, proved beneficial. Conversely, polynomial and linear regression models performed the worst. This might be due to their inherent assumption of a specific type of relationship (linear or polynomial) between predictors and the response variable. When these assumptions do not hold true, as often is the case in real-world complex datasets, the models might not perform well.
+
+R&D expenditure was a significant predictor for less developed and emerging countries, pointing to the critical role of investment in technology and innovation for these nations. Interestingly, in developed countries, the 'Creation of New Technology' surfaced as the most crucial factor. This could imply that as these countries have relatively robust financial resources and their populace is well-equipped to adopt existing technology, fostering innovation and creating new technology has a more direct impact on unemployment rates.
+
+Surprisingly, our models performed better on the test sets for less developed countries, implying that the model could generalize better than expected. This can occasionally happen when our training set is harder to fit, or when certain random aspects of the model (such as random initialization of parameters) end up more beneficial for the test set. However, further exploration is necessary to confirm this trend.
+
+In terms of future research, adding more variables into the model, like GDP, education levels, and internet penetration, could enhance the model's accuracy. Moreover, investigating the relationship between unemployment and new job creation could provide a more comprehensive picture of the labor market dynamics amidst technological advancements. As observed in the beginning, there is a possible trend where low-skilled jobs are diminishing, and higher-skill jobs are emerging more prominently. Understanding this shift in the labor market could be key to devising effective strategies for workforce development and employment policies.
+
+To conclude, this analysis offers valuable insights into the complex dynamics between unemployment rates and technological advancements. While the Random Forest model did not provide a perfect fit, it yielded meaningful results and opened up avenues for future research. As we continue refining our models and expanding our understanding, we hope to provide more precise predictions and contribute to policy discussions surrounding technological advancements and labor market dynamics.
+
+
+### Sources
+This project uses multiple datasets from various sources:\n',
+  '\n- **Creation and Diffusion of New Technology:** The data for the creation and diffusion of new technology was derived from the dataset "Global Index of Economic Openness" by user Karn Thamprasert on Zenodo. The specific indicators used include "Scientific and Technical Journal Articles" and "Patent Applications, Residents + Non-Residents" for creation, and "Individuals using the Internet (% of Population)" and "High-technology exports (% of manufactured exports)" for diffusion. [Link to the Dataset](https://zenodo.org/record/3955182)\n',
+  '\n- **R&D Expenses:** The data for R&D expenses was taken from the World Bank Indicator "Research and development expenditure (% of GDP)" by the United Nations Educational, Scientific, and Cultural Organization (UNESCO) Institute for Statistics. [Link to the Dataset](https://data.worldbank.org/indicator/GB.XPD.RSDV.GD.ZS)\n',
+  '\n\n### Images and Videos\n',
+  '\n- **AI Taking Over Jobs:** [Image Source](https://www.google.com/search?q=ai+take+jobs&tbm=isch#imgrc=sUkDso4_z1_ymM)\n',
+  '\n- **Tesla Autopilot:** The image and video showcasing Tesla\'s Autopilot were taken from [Image Source](https://www.google.com/search?q=tesla+auto+drive&tbm=isch#imgrc=KC-8v5xPWohTVM) and [Video Source](https://www.youtube.com/watch?v=fKXztwtXaGo), respectively.\n',
+  '\n- **AWS:** The image and video explaining AWS were taken from [Image Source](https://www.google.com/search?sxsrf=APwXEdfnMXb-lbOR6pkSpi3fGSi1e1JtwA:1686709107484&q=aws&tbm=isch) and [Video Source](https://www.youtube.com/watch?v=EhExK4JgXvE), respectively.\n',
+  '\n- **Bing vs Bard:** The  video comparing Bing and Bard were taken from [Video Source](https://www.youtube.com/watch?v=HKvo6acp5aI), respectively.\n'
+
+
